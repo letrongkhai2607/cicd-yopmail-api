@@ -1,0 +1,54 @@
+name: Deploy Laravel to EC2
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+            echo "HOST=${{ secrets.STAGING_EC2_HOST }}" >> $GITHUB_ENV
+            echo "USER=${{ secrets.STAGING_EC2_USER }}" >> $GITHUB_ENV
+            echo "PATH=/var/www/laravel-staging" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            echo "HOST=${{ secrets.PRODUCTION_EC2_HOST }}" >> $GITHUB_ENV
+            echo "USER=${{ secrets.PRODUCTION_EC2_USER }}" >> $GITHUB_ENV
+            echo "PATH=/var/www/laravel-production" >> $GITHUB_ENV
+          fi
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
+            cd $PATH
+            git pull origin main
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo systemctl restart php8.3-fpm
+            sudo systemctl restart nginx
+          EOF
