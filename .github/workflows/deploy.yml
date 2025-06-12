@@ -1,5 +1,4 @@
-name: Deploy Laravel to EC2
-
+name: deploy
 on:
   workflow_dispatch:
     inputs:
